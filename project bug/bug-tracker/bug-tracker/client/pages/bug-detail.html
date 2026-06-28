@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bug Detail - Bug Tracker</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <div class="container">
+    <a href="#" id="backLink">&larr; Back to Project</a>
+
+    <div class="card" style="margin-top: 12px;">
+      <div class="flex-between">
+        <h2 id="bugTitle">Loading...</h2>
+        <button class="danger" id="deleteBugBtn">Delete Bug</button>
+      </div>
+      <p id="bugDescription"></p>
+      <p class="meta" id="bugMeta"></p>
+    </div>
+
+    <div class="card">
+      <h3>Update Bug</h3>
+      <form id="updateForm">
+        <div>
+          <label for="uStatus">Status</label>
+          <select id="uStatus">
+            <option value="open">Open</option>
+            <option value="in-progress">In Progress</option>
+            <option value="resolved">Resolved</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+        <div>
+          <label for="uPriority">Priority</label>
+          <select id="uPriority">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div>
+          <label for="uAssignee">Assignee</label>
+          <select id="uAssignee">
+            <option value="">Unassigned</option>
+          </select>
+        </div>
+        <button type="submit">Save Changes</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Comments</h3>
+      <div id="commentsList"></div>
+      <form id="commentForm" style="margin-top: 12px;">
+        <textarea id="commentText" placeholder="Add a comment..." required></textarea>
+        <button type="submit">Post Comment</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/navbar.js"></script>
+  <script>
+    requireAuth();
+    renderNavbar("bugs");
+
+    const params = new URLSearchParams(window.location.search);
+    const bugId = params.get("id");
+    if (!bugId) window.location.href = "bugs.html";
+
+    let allUsers = [];
+    let currentProjectId = null;
+
+    async function loadUsers() {
+      allUsers = await AuthAPI.allUsers();
+      const assigneeSelect = document.getElementById("uAssignee");
+      allUsers.forEach((u) => {
+        assigneeSelect.appendChild(new Option(`${u.name} (${u.email})`, u._id));
+      });
+    }
+
+    function renderComments(comments) {
+      const list = document.getElementById("commentsList");
+      if (!comments.length) {
+        list.innerHTML = '<p class="meta">No comments yet.</p>';
+        return;
+      }
+      list.innerHTML = comments
+        .map(
+          (c) => `
+          <div class="comment">
+            <p class="meta">${escapeHtml(c.author?.name || "Unknown")} · ${formatDate(c.createdAt)}</p>
+            <p>${escapeHtml(c.text)}</p>
+          </div>
+        `
+        )
+        .join("");
+    }
+
+    async function loadBug() {
+      try {
+        const bug = await BugAPI.get(bugId);
+        currentProjectId = bug.project?._id;
+
+        document.getElementById("bugTitle").textContent = bug.title;
+        document.getElementById("bugDescription").textContent = bug.description || "No description";
+        document.getElementById("bugMeta").textContent =
+          `Project: ${bug.project?.name || "?"} · Reporter: ${bug.reporter?.name || "?"} · Created ${formatDate(bug.createdAt)}`;
+
+        document.getElementById("uStatus").value = bug.status;
+        document.getElementById("uPriority").value = bug.priority;
+        document.getElementById("uAssignee").value = bug.assignee?._id || "";
+
+        document.getElementById("backLink").href = currentProjectId
+          ? `project-detail.html?id=${currentProjectId}`
+          : "bugs.html";
+
+        renderComments(bug.comments || []);
+      } catch (err) {
+        alert(err.message);
+        window.location.href = "bugs.html";
+      }
+    }
+
+    document.getElementById("updateForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        await BugAPI.update(bugId, {
+          status: document.getElementById("uStatus").value,
+          priority: document.getElementById("uPriority").value,
+          assignee: document.getElementById("uAssignee").value || null,
+        });
+        loadBug();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    document.getElementById("commentForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const textarea = document.getElementById("commentText");
+      try {
+        await BugAPI.addComment(bugId, textarea.value.trim());
+        textarea.value = "";
+        loadBug();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    document.getElementById("deleteBugBtn").addEventListener("click", async () => {
+      if (!confirm("Delete this bug? This cannot be undone.")) return;
+      try {
+        await BugAPI.remove(bugId);
+        window.location.href = currentProjectId
+          ? `project-detail.html?id=${currentProjectId}`
+          : "bugs.html";
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    (async () => {
+      await loadUsers();
+      await loadBug();
+    })();
+  </script>
+</body>
+</html>

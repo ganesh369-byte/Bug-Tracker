@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>All Bugs - Bug Tracker</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <div class="container">
+    <h2>All Bugs</h2>
+    <div class="filters">
+      <select id="filterStatus">
+        <option value="">All statuses</option>
+        <option value="open">Open</option>
+        <option value="in-progress">In Progress</option>
+        <option value="resolved">Resolved</option>
+        <option value="closed">Closed</option>
+      </select>
+      <select id="filterPriority">
+        <option value="">All priorities</option>
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+      </select>
+    </div>
+    <div id="bugsList"></div>
+    <p id="emptyState" class="empty-state hidden">No bugs found.</p>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/navbar.js"></script>
+  <script>
+    requireAuth();
+    renderNavbar("bugs");
+
+    function bugCardHtml(bug) {
+      return `
+        <div class="card bug-card" style="cursor: pointer;" data-id="${bug._id}">
+          <div class="flex-between">
+            <h3>${escapeHtml(bug.title)}</h3>
+            <div class="btn-row">
+              <span class="badge priority-${bug.priority}">${bug.priority}</span>
+              <span class="badge status-${bug.status}">${bug.status}</span>
+            </div>
+          </div>
+          <p>${escapeHtml(bug.description || "")}</p>
+          <p class="meta">
+            Project: ${escapeHtml(bug.project?.name || "?")} ·
+            Assignee: ${escapeHtml(bug.assignee?.name || "Unassigned")} ·
+            ${formatDate(bug.createdAt)}
+          </p>
+        </div>
+      `;
+    }
+
+    async function loadBugs() {
+      try {
+        const status = document.getElementById("filterStatus").value;
+        const priority = document.getElementById("filterPriority").value;
+        const query = {};
+        if (status) query.status = status;
+        if (priority) query.priority = priority;
+
+        const bugs = await BugAPI.list(query);
+        const list = document.getElementById("bugsList");
+        const emptyState = document.getElementById("emptyState");
+
+        list.innerHTML = bugs.map(bugCardHtml).join("");
+        emptyState.classList.toggle("hidden", bugs.length > 0);
+
+        document.querySelectorAll(".bug-card").forEach((card) => {
+          card.addEventListener("click", () => {
+            window.location.href = `bug-detail.html?id=${card.dataset.id}`;
+          });
+        });
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    document.getElementById("filterStatus").addEventListener("change", loadBugs);
+    document.getElementById("filterPriority").addEventListener("change", loadBugs);
+
+    loadBugs();
+  </script>
+</body>
+</html>

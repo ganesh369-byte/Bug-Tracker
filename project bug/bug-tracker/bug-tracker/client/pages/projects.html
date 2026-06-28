@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Projects - Bug Tracker</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="page-header">
+      <h2>Your Projects</h2>
+      <button id="newProjectBtn">+ New Project</button>
+    </div>
+    <div id="projectsGrid" class="grid"></div>
+    <p id="emptyState" class="empty-state hidden">No projects yet. Create your first one!</p>
+  </div>
+
+  <!-- New project modal -->
+  <div class="modal-overlay hidden" id="modalOverlay">
+    <div class="modal">
+      <h3>New Project</h3>
+      <form id="projectForm">
+        <div>
+          <label for="pName">Project Name</label>
+          <input type="text" id="pName" required />
+        </div>
+        <div>
+          <label for="pDesc">Description</label>
+          <textarea id="pDesc"></textarea>
+        </div>
+        <p class="error-msg hidden" id="projectError"></p>
+        <div class="btn-row">
+          <button type="submit">Create</button>
+          <button type="button" class="secondary" id="cancelModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/navbar.js"></script>
+  <script>
+    requireAuth();
+    renderNavbar("projects");
+
+    const grid = document.getElementById("projectsGrid");
+    const emptyState = document.getElementById("emptyState");
+    const modalOverlay = document.getElementById("modalOverlay");
+
+    document.getElementById("newProjectBtn").addEventListener("click", () => {
+      modalOverlay.classList.remove("hidden");
+    });
+    document.getElementById("cancelModal").addEventListener("click", () => {
+      modalOverlay.classList.add("hidden");
+    });
+
+    async function loadProjects() {
+      try {
+        const projects = await ProjectAPI.list();
+        grid.innerHTML = "";
+        emptyState.classList.toggle("hidden", projects.length > 0);
+
+        projects.forEach((p) => {
+          const card = document.createElement("div");
+          card.className = "card";
+          card.style.cursor = "pointer";
+          card.innerHTML = `
+            <h3>${escapeHtml(p.name)}</h3>
+            <p>${escapeHtml(p.description || "No description")}</p>
+            <p class="meta">Owner: ${escapeHtml(p.owner?.name || "Unknown")} · ${p.members.length} member(s)</p>
+          `;
+          card.addEventListener("click", () => {
+            window.location.href = `project-detail.html?id=${p._id}`;
+          });
+          grid.appendChild(card);
+        });
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    document.getElementById("projectForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorMsg = document.getElementById("projectError");
+      errorMsg.classList.add("hidden");
+
+      try {
+        await ProjectAPI.create({
+          name: document.getElementById("pName").value.trim(),
+          description: document.getElementById("pDesc").value.trim(),
+        });
+        modalOverlay.classList.add("hidden");
+        document.getElementById("projectForm").reset();
+        loadProjects();
+      } catch (err) {
+        errorMsg.textContent = err.message;
+        errorMsg.classList.remove("hidden");
+      }
+    });
+
+    loadProjects();
+  </script>
+</body>
+</html>

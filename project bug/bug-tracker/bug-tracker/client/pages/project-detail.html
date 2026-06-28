@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project Detail - Bug Tracker</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <div class="container">
+    <a href="projects.html">&larr; Back to Projects</a>
+    <div class="page-header">
+      <div>
+        <h2 id="projectName">Loading...</h2>
+        <p id="projectDesc" style="color: var(--text-light);"></p>
+      </div>
+      <div class="btn-row">
+        <button class="secondary" id="addMemberBtn">+ Add Member</button>
+        <button id="newBugBtn">+ Report Bug</button>
+      </div>
+    </div>
+
+    <h3>Bugs in this project</h3>
+    <div class="filters">
+      <select id="filterStatus">
+        <option value="">All statuses</option>
+        <option value="open">Open</option>
+        <option value="in-progress">In Progress</option>
+        <option value="resolved">Resolved</option>
+        <option value="closed">Closed</option>
+      </select>
+      <select id="filterPriority">
+        <option value="">All priorities</option>
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+      </select>
+    </div>
+    <div id="bugsList"></div>
+    <p id="emptyState" class="empty-state hidden">No bugs reported yet.</p>
+  </div>
+
+  <!-- New bug modal -->
+  <div class="modal-overlay hidden" id="bugModalOverlay">
+    <div class="modal">
+      <h3>Report a Bug</h3>
+      <form id="bugForm">
+        <div>
+          <label for="bTitle">Title</label>
+          <input type="text" id="bTitle" required />
+        </div>
+        <div>
+          <label for="bDesc">Description</label>
+          <textarea id="bDesc"></textarea>
+        </div>
+        <div>
+          <label for="bPriority">Priority</label>
+          <select id="bPriority">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div>
+          <label for="bAssignee">Assign to (optional)</label>
+          <select id="bAssignee">
+            <option value="">Unassigned</option>
+          </select>
+        </div>
+        <p class="error-msg hidden" id="bugError"></p>
+        <div class="btn-row">
+          <button type="submit">Create Bug</button>
+          <button type="button" class="secondary" id="cancelBugModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add member modal -->
+  <div class="modal-overlay hidden" id="memberModalOverlay">
+    <div class="modal">
+      <h3>Add Member</h3>
+      <form id="memberForm">
+        <div>
+          <label for="memberSelect">Select User</label>
+          <select id="memberSelect"></select>
+        </div>
+        <p class="error-msg hidden" id="memberError"></p>
+        <div class="btn-row">
+          <button type="submit">Add</button>
+          <button type="button" class="secondary" id="cancelMemberModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/navbar.js"></script>
+  <script>
+    requireAuth();
+    renderNavbar("projects");
+
+    const params = new URLSearchParams(window.location.search);
+    const projectId = params.get("id");
+    if (!projectId) window.location.href = "projects.html";
+
+    let allUsers = [];
+
+    async function loadProject() {
+      try {
+        const project = await ProjectAPI.get(projectId);
+        document.getElementById("projectName").textContent = project.name;
+        document.getElementById("projectDesc").textContent = project.description || "No description";
+      } catch (err) {
+        alert(err.message);
+        window.location.href = "projects.html";
+      }
+    }
+
+    async function loadUsers() {
+      allUsers = await AuthAPI.allUsers();
+      const assigneeSelect = document.getElementById("bAssignee");
+      const memberSelect = document.getElementById("memberSelect");
+      allUsers.forEach((u) => {
+        const opt1 = new Option(`${u.name} (${u.email})`, u._id);
+        assigneeSelect.appendChild(opt1);
+        const opt2 = new Option(`${u.name} (${u.email})`, u._id);
+        memberSelect.appendChild(opt2);
+      });
+    }
+
+    function bugCardHtml(bug) {
+      return `
+        <div class="card bug-card" style="cursor: pointer;" data-id="${bug._id}">
+          <div class="flex-between">
+            <h3>${escapeHtml(bug.title)}</h3>
+            <div class="btn-row">
+              <span class="badge priority-${bug.priority}">${bug.priority}</span>
+              <span class="badge status-${bug.status}">${bug.status}</span>
+            </div>
+          </div>
+          <p>${escapeHtml(bug.description || "")}</p>
+          <p class="meta">
+            Reporter: ${escapeHtml(bug.reporter?.name || "?")} ·
+            Assignee: ${escapeHtml(bug.assignee?.name || "Unassigned")} ·
+            ${formatDate(bug.createdAt)}
+          </p>
+        </div>
+      `;
+    }
+
+    async function loadBugs() {
+      try {
+        const status = document.getElementById("filterStatus").value;
+        const priority = document.getElementById("filterPriority").value;
+        const query = { project: projectId };
+        if (status) query.status = status;
+        if (priority) query.priority = priority;
+
+        const bugs = await BugAPI.list(query);
+        const list = document.getElementById("bugsList");
+        const emptyState = document.getElementById("emptyState");
+
+        list.innerHTML = bugs.map(bugCardHtml).join("");
+        emptyState.classList.toggle("hidden", bugs.length > 0);
+
+        document.querySelectorAll(".bug-card").forEach((card) => {
+          card.addEventListener("click", () => {
+            window.location.href = `bug-detail.html?id=${card.dataset.id}`;
+          });
+        });
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    document.getElementById("filterStatus").addEventListener("change", loadBugs);
+    document.getElementById("filterPriority").addEventListener("change", loadBugs);
+
+    // New bug modal
+    const bugModal = document.getElementById("bugModalOverlay");
+    document.getElementById("newBugBtn").addEventListener("click", () => bugModal.classList.remove("hidden"));
+    document.getElementById("cancelBugModal").addEventListener("click", () => bugModal.classList.add("hidden"));
+
+    document.getElementById("bugForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorMsg = document.getElementById("bugError");
+      errorMsg.classList.add("hidden");
+
+      try {
+        await BugAPI.create({
+          title: document.getElementById("bTitle").value.trim(),
+          description: document.getElementById("bDesc").value.trim(),
+          priority: document.getElementById("bPriority").value,
+          assignee: document.getElementById("bAssignee").value || null,
+          project: projectId,
+        });
+        bugModal.classList.add("hidden");
+        document.getElementById("bugForm").reset();
+        loadBugs();
+      } catch (err) {
+        errorMsg.textContent = err.message;
+        errorMsg.classList.remove("hidden");
+      }
+    });
+
+    // Add member modal
+    const memberModal = document.getElementById("memberModalOverlay");
+    document.getElementById("addMemberBtn").addEventListener("click", () => memberModal.classList.remove("hidden"));
+    document.getElementById("cancelMemberModal").addEventListener("click", () => memberModal.classList.add("hidden"));
+
+    document.getElementById("memberForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorMsg = document.getElementById("memberError");
+      errorMsg.classList.add("hidden");
+
+      try {
+        await ProjectAPI.addMember(projectId, document.getElementById("memberSelect").value);
+        memberModal.classList.add("hidden");
+        alert("Member added");
+      } catch (err) {
+        errorMsg.textContent = err.message;
+        errorMsg.classList.remove("hidden");
+      }
+    });
+
+    (async () => {
+      await loadProject();
+      await loadUsers();
+      await loadBugs();
+    })();
+  </script>
+</body>
+</html>
